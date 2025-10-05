@@ -33,7 +33,7 @@ export default function RegisterPage() {
 
     try {
       const supabase = createClient()
-      const { data, error: authError } = await supabase.auth.signUp({
+      const { error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -47,8 +47,9 @@ export default function RegisterPage() {
 
       // Redirect to dashboard or verification page
       router.push('/dashboard')
-    } catch (err: any) {
-      setError(err.message || 'Failed to create account')
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create account'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }

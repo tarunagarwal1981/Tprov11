@@ -20,7 +20,7 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient()
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      const { error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
@@ -29,8 +29,9 @@ export default function LoginPage() {
 
       // Redirect based on user role
       router.push('/dashboard')
-    } catch (err: any) {
-      setError(err.message || 'Failed to login')
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to login'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -152,7 +153,7 @@ export default function LoginPage() {
 
       <div style={{ textAlign: 'center', marginTop: 'var(--space-6)' }}>
         <p className="text-secondary">
-          Don't have an account?{' '}
+          Don&apos;t have an account?{' '}
           <Link 
             href="/auth/register" 
             style={{ 
