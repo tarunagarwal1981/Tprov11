@@ -7,6 +7,12 @@ import { createClient } from '@/lib/supabase/client'
 import { Mail, Lock, AlertCircle, Eye, EyeOff, Plane } from 'lucide-react'
 
 export default function LoginPage() {
+  console.log('🎬 LoginPage component initialized')
+  console.log('🌍 Environment check:', {
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Set' : '❌ Missing',
+    supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'
+  })
+  
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -17,44 +23,81 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('🚀 Login attempt started')
+    console.log('📧 Email:', email)
+    console.log('🔒 Password length:', password.length)
+    
     setError('')
     setLoading(true)
 
     try {
+      console.log('🔗 Creating Supabase client...')
       const supabase = createClient()
+      console.log('✅ Supabase client created successfully')
+      
+      console.log('🔐 Attempting authentication...')
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (authError) throw authError
+      console.log('📊 Auth response:', { data, authError })
+
+      if (authError) {
+        console.error('❌ Authentication error:', authError)
+        throw authError
+      }
+
+      console.log('✅ Authentication successful!')
+      console.log('👤 User data:', data.user)
+      console.log('🎫 Session data:', data.session)
 
       // Get user profile to determine role
-      const { data: profile } = await supabase
+      console.log('🔍 Fetching user profile...')
+      const { data: profile, error: profileError } = await supabase
         .from('users')
         .select('role')
         .eq('id', data.user.id)
         .single()
 
+      console.log('📋 Profile response:', { profile, profileError })
+
+      if (profileError) {
+        console.warn('⚠️ Profile fetch error (non-critical):', profileError)
+      }
+
       // Redirect based on role
-      if (profile?.role === 'TOUR_OPERATOR') {
+      const userRole = profile?.role
+      console.log('🎭 User role:', userRole)
+      
+      if (userRole === 'TOUR_OPERATOR') {
+        console.log('🏢 Redirecting to operator dashboard...')
         router.push('/operator/dashboard')
-      } else if (profile?.role === 'TRAVEL_AGENT') {
+      } else if (userRole === 'TRAVEL_AGENT') {
+        console.log('✈️ Redirecting to agent dashboard...')
         router.push('/agent/dashboard')
-      } else if (profile?.role === 'ADMIN' || profile?.role === 'SUPER_ADMIN') {
+      } else if (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') {
+        console.log('👑 Redirecting to admin dashboard...')
         router.push('/admin/dashboard')
       } else {
         // Default to operator dashboard for users without specific role
+        console.log('🔄 No specific role found, redirecting to operator dashboard...')
         router.push('/operator/dashboard')
       }
     } catch (err: unknown) {
-      setError((err as Error).message || 'Invalid email or password')
+      console.error('💥 Login error:', err)
+      const errorMessage = (err as Error).message || 'Invalid email or password'
+      console.log('📝 Setting error message:', errorMessage)
+      setError(errorMessage)
     } finally {
+      console.log('🏁 Login process completed')
       setLoading(false)
     }
   }
 
   const handleDemoLogin = async (role: 'operator' | 'agent') => {
+    console.log('🎭 Demo login started for role:', role)
+    
     const demoCredentials = {
       operator: {
         email: 'operator@travelpro.com',
@@ -66,16 +109,21 @@ export default function LoginPage() {
       }
     }
 
+    console.log('📧 Setting demo credentials:', demoCredentials[role])
     setEmail(demoCredentials[role].email)
     setPassword(demoCredentials[role].password)
     setError('')
     
     // Trigger form submit
     setTimeout(() => {
+      console.log('⏰ Triggering form submit...')
       const form = document.getElementById('login-form') as HTMLFormElement
       if (form) {
+        console.log('📝 Form found, dispatching submit event')
         const submitEvent = new Event('submit', { bubbles: true, cancelable: true })
         form.dispatchEvent(submitEvent)
+      } else {
+        console.error('❌ Form not found!')
       }
     }, 100)
   }
