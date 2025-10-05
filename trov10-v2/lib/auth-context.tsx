@@ -33,9 +33,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await signOut()
       setUser(null)
+      // Clear stored tokens
+      localStorage.removeItem('sb-access-token')
+      localStorage.removeItem('sb-refresh-token')
       router.push('/auth/login')
     } catch (error) {
       console.error('Error signing out:', error)
+      // Clear stored tokens even if signOut fails
+      localStorage.removeItem('sb-access-token')
+      localStorage.removeItem('sb-refresh-token')
     }
   }
 
@@ -45,6 +51,74 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        // Check for localStorage tokens first (fallback from direct auth)
+        const storedAccessToken = localStorage.getItem('sb-access-token')
+        const storedRefreshToken = localStorage.getItem('sb-refresh-token')
+        
+        if (storedAccessToken && storedRefreshToken) {
+          console.log('🔄 Found stored tokens, attempting to restore session...')
+          
+          // Try to restore session with timeout
+          try {
+            const sessionPromise = supabase.auth.setSession({
+              access_token: storedAccessToken,
+              refresh_token: storedRefreshToken
+            })
+            
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Session restore timeout')), 2000)
+            )
+            
+            const { error } = await Promise.race([sessionPromise, timeoutPromise]) as any
+            
+            if (error) {
+              console.warn('⚠️ Could not restore session from stored tokens:', error)
+              // Clear invalid tokens
+              localStorage.removeItem('sb-access-token')
+              localStorage.removeItem('sb-refresh-token')
+            } else {
+              console.log('✅ Session restored from stored tokens')
+            }
+          } catch (restoreError) {
+            console.warn('⚠️ Session restore failed:', restoreError)
+            // Don't clear tokens immediately, try direct API approach
+            console.log('🔄 Attempting direct API user fetch...')
+            
+            try {
+              // Use direct API to fetch user profile
+              const profileResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?select=*&id=eq.${JSON.parse(atob(storedAccessToken.split('.')[1])).sub}`, {
+                headers: {
+                  'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                  'Authorization': `Bearer ${storedAccessToken}`,
+                  'Content-Type': 'application/json'
+                }
+              })
+              
+              if (profileResponse.ok) {
+                const profileData = await profileResponse.json()
+                if (profileData && profileData.length > 0) {
+                  console.log('✅ Direct API user fetch successful')
+                  const userProfile = profileData[0]
+                  const user = {
+                    id: userProfile.id,
+                    email: userProfile.email,
+                    profile: userProfile
+                  }
+                  setUser(user)
+                  setLoading(false)
+                  return
+                }
+              }
+            } catch (directApiError) {
+              console.warn('⚠️ Direct API user fetch failed:', directApiError)
+            }
+            
+            // If all else fails, clear tokens
+            localStorage.removeItem('sb-access-token')
+            localStorage.removeItem('sb-refresh-token')
+          }
+        }
+        
         const currentUser = await getCurrentUser()
         setUser(currentUser)
       } catch (error) {
@@ -65,6 +139,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(currentUser)
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
+          // Clear stored tokens on sign out
+          localStorage.removeItem('sb-access-token')
+          localStorage.removeItem('sb-refresh-token')
         }
         setLoading(false)
       }

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/lib/auth-context'
+import { getUserDisplayName } from '@/lib/auth'
 import {
   Package,
   Calendar,
@@ -28,7 +29,6 @@ export default function OperatorDashboardPage() {
     partnerAgents: 42
   })
 
-  const [loading, setLoading] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -39,13 +39,8 @@ export default function OperatorDashboardPage() {
     checkScreenSize()
     window.addEventListener('resize', checkScreenSize)
     
-    // Set loading to false after auth loading is complete
-    if (!authLoading) {
-      setTimeout(() => setLoading(false), 500)
-    }
-    
     return () => window.removeEventListener('resize', checkScreenSize)
-  }, [authLoading])
+  }, [])
 
   const breadcrumbs = [
     { label: 'Dashboard' }
@@ -169,7 +164,8 @@ export default function OperatorDashboardPage() {
     }
   ]
 
-  if (loading || authLoading) {
+  // Show loading only while auth is loading
+  if (authLoading) {
     return (
       <DashboardLayout breadcrumbs={breadcrumbs}>
         <div style={{ 
@@ -221,7 +217,7 @@ export default function OperatorDashboardPage() {
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text'
           }}>
-            Welcome back, {user?.profile?.name || user?.email?.split('@')[0] || 'User'}! 👋
+            Welcome back, {getUserDisplayName(user)}! 👋
           </h1>
           <p style={{
             fontSize: isMobile ? '14px' : '16px',

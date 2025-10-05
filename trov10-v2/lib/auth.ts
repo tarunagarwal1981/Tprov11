@@ -25,6 +25,42 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
     
     if (sessionError || !session?.user) {
+      // Check for localStorage tokens as fallback
+      const storedAccessToken = localStorage.getItem('sb-access-token')
+      if (storedAccessToken) {
+        console.log('🔄 No Supabase session, trying localStorage fallback...')
+        try {
+          // Decode JWT to get user ID
+          const payload = JSON.parse(atob(storedAccessToken.split('.')[1]))
+          const userId = payload.sub
+          
+          // Fetch user profile directly
+          const profileResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?select=*&id=eq.${userId}`, {
+            headers: {
+              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+              'Authorization': `Bearer ${storedAccessToken}`,
+              'Content-Type': 'application/json'
+            }
+          })
+          
+          if (profileResponse.ok) {
+            const profileData = await profileResponse.json()
+            if (profileData && profileData.length > 0) {
+              const userProfile = profileData[0]
+              return {
+                id: userProfile.id,
+                email: userProfile.email,
+                profile: userProfile as UserProfile
+              }
+            }
+          }
+        } catch (fallbackError) {
+          console.warn('⚠️ localStorage fallback failed:', fallbackError)
+          // Clear invalid tokens
+          localStorage.removeItem('sb-access-token')
+          localStorage.removeItem('sb-refresh-token')
+        }
+      }
       return null
     }
 

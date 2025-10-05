@@ -35,54 +35,205 @@ export default function LoginPage() {
       const supabase = createClient()
       console.log('✅ Supabase client created successfully')
       
-      console.log('🔐 Attempting authentication...')
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      console.log('📊 Auth response:', { data, authError })
-
-      if (authError) {
-        console.error('❌ Authentication error:', authError)
-        throw authError
+      // Test network connectivity to Supabase
+      console.log('🌐 Testing network connectivity...')
+      try {
+        const testResponse = await fetch(process.env.NEXT_PUBLIC_SUPABASE_URL + '/rest/v1/', {
+          method: 'HEAD',
+          headers: {
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+          }
+        })
+        console.log('🌐 Network test result:', {
+          status: testResponse.status,
+          ok: testResponse.ok,
+          statusText: testResponse.statusText
+        })
+        
+        // Test auth endpoint specifically
+        console.log('🔐 Testing auth endpoint...')
+        const authTestResponse = await fetch(process.env.NEXT_PUBLIC_SUPABASE_URL + '/auth/v1/token?grant_type=password', {
+          method: 'POST',
+          headers: {
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: 'test@example.com',
+            password: 'wrongpassword'
+          })
+        })
+        
+        console.log('🔐 Auth endpoint test:', {
+          status: authTestResponse.status,
+          ok: authTestResponse.ok,
+          statusText: authTestResponse.statusText
+        })
+        
+        if (authTestResponse.status === 400) {
+          console.log('✅ Auth endpoint is working (400 = expected for wrong credentials)')
+        } else if (authTestResponse.status === 200) {
+          console.log('⚠️ Auth endpoint returned 200 for wrong credentials - this is unexpected')
+        } else {
+          console.log('❌ Auth endpoint returned unexpected status:', authTestResponse.status)
+        }
+        
+      } catch (networkError) {
+        console.warn('⚠️ Network connectivity test failed:', networkError)
       }
-
-      console.log('✅ Authentication successful!')
-      console.log('👤 User data:', data.user)
-      console.log('🎫 Session data:', data.session)
-
-      // Get user profile to determine role
-      console.log('🔍 Fetching user profile...')
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', data.user.id)
-        .single()
-
-      console.log('📋 Profile response:', { profile, profileError })
-
-      if (profileError) {
-        console.warn('⚠️ Profile fetch error (non-critical):', profileError)
-      }
-
-      // Redirect based on role
-      const userRole = profile?.role
-      console.log('🎭 User role:', userRole)
       
-      if (userRole === 'TOUR_OPERATOR') {
-        console.log('🏢 Redirecting to operator dashboard...')
-        router.push('/operator/dashboard')
-      } else if (userRole === 'TRAVEL_AGENT') {
-        console.log('✈️ Redirecting to agent dashboard...')
-        router.push('/agent/dashboard')
-      } else if (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') {
-        console.log('👑 Redirecting to admin dashboard...')
-        router.push('/admin/dashboard')
-      } else {
-        // Default to operator dashboard for users without specific role
-        console.log('🔄 No specific role found, redirecting to operator dashboard...')
-        router.push('/operator/dashboard')
+      console.log('🔐 Attempting authentication...')
+      console.log('📧 Auth request details:', {
+        email: email,
+        passwordLength: password.length,
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        timestamp: new Date().toISOString()
+      })
+      
+      // Use direct API authentication since Supabase client is hanging
+      console.log('🚀 Using direct API authentication (Supabase client workaround)...')
+      try {
+        const directAuthResponse = await fetch(process.env.NEXT_PUBLIC_SUPABASE_URL + '/auth/v1/token?grant_type=password', {
+          method: 'POST',
+          headers: {
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: email,
+            password: password
+          })
+        })
+        
+        console.log('🚀 Direct auth result:', {
+          status: directAuthResponse.status,
+          ok: directAuthResponse.ok,
+          statusText: directAuthResponse.statusText
+        })
+        
+        if (directAuthResponse.ok) {
+          const authData = await directAuthResponse.json()
+          console.log('✅ Direct authentication successful!')
+          console.log('🎫 Auth data:', authData)
+          
+          // Set the session in Supabase client for future requests
+          console.log('🔧 Setting session in Supabase client...')
+          try {
+            // Create a new Supabase client instance for session setting
+            const { createClient } = await import('@/lib/supabase/client')
+            const freshSupabase = createClient()
+            
+            // Set session with a shorter timeout
+            const { error: setSessionError } = await Promise.race([
+              freshSupabase.auth.setSession({
+                access_token: authData.access_token,
+                refresh_token: authData.refresh_token
+              }),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Session setting timed out after 3 seconds')), 3000)
+              )
+            ]) as any
+            
+            if (setSessionError) {
+              console.warn('⚠️ Could not set session in Supabase client:', setSessionError)
+              // Try alternative approach - store tokens in localStorage
+              console.log('🔄 Attempting localStorage fallback...')
+              localStorage.setItem('sb-access-token', authData.access_token)
+              localStorage.setItem('sb-refresh-token', authData.refresh_token)
+            } else {
+              console.log('✅ Session set in Supabase client successfully')
+            }
+          } catch (sessionError) {
+            console.warn('⚠️ Session setting failed or timed out:', sessionError)
+            console.log('🔄 Using localStorage fallback...')
+            // Store tokens in localStorage as fallback
+            localStorage.setItem('sb-access-token', authData.access_token)
+            localStorage.setItem('sb-refresh-token', authData.refresh_token)
+          }
+          
+          console.log('👤 User ID from auth data:', authData.user?.id)
+          
+          // Get user profile to determine role
+          console.log('🔍 Fetching user profile...')
+          try {
+            // Try direct API first since Supabase client is having issues
+            console.log('🌐 Trying direct API for profile fetch...')
+            const profileResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?select=role&id=eq.${authData.user.id}`, {
+              method: 'GET',
+              headers: {
+                'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                'Authorization': `Bearer ${authData.access_token}`,
+                'Content-Type': 'application/json'
+              }
+            })
+            
+            console.log('🌐 Direct profile API result:', {
+              status: profileResponse.status,
+              ok: profileResponse.ok,
+              statusText: profileResponse.statusText
+            })
+            
+            let userRole = null
+            
+            if (profileResponse.ok) {
+              const profileData = await profileResponse.json()
+              console.log('📋 Direct profile data:', profileData)
+              userRole = profileData[0]?.role
+            } else {
+              console.warn('⚠️ Direct profile fetch failed, trying Supabase client...')
+              
+              // Fallback to Supabase client with timeout
+              const profilePromise = supabase
+                .from('users')
+                .select('role')
+                .eq('id', authData.user.id)
+                .single()
+              
+              const profileTimeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Profile fetch timed out after 5 seconds')), 5000)
+              )
+              
+              const { data: profile, error: profileError } = await Promise.race([profilePromise, profileTimeoutPromise]) as any
+              
+              console.log('📋 Supabase profile response:', { profile, profileError })
+              userRole = profile?.role
+            }
+
+            // Redirect based on role
+            console.log('🎭 User role:', userRole)
+            
+            if (userRole === 'TOUR_OPERATOR') {
+              console.log('🏢 Redirecting to operator dashboard...')
+              router.push('/operator/dashboard')
+            } else if (userRole === 'TRAVEL_AGENT') {
+              console.log('✈️ Redirecting to agent dashboard...')
+              router.push('/agent/dashboard')
+            } else if (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') {
+              console.log('👑 Redirecting to admin dashboard...')
+              router.push('/admin/dashboard')
+            } else {
+              // Default to operator dashboard for users without specific role
+              console.log('🔄 No specific role found, redirecting to operator dashboard...')
+              router.push('/operator/dashboard')
+            }
+          } catch (profileError) {
+            console.error('💥 Profile fetch failed:', profileError)
+            // Still redirect to operator dashboard as fallback
+            console.log('🔄 Profile fetch failed, redirecting to operator dashboard as fallback...')
+            router.push('/operator/dashboard')
+          }
+          
+          return // Exit early on success
+          
+        } else {
+          const errorData = await directAuthResponse.text()
+          console.log('❌ Direct auth failed:', errorData)
+          throw new Error('Invalid email or password')
+        }
+      } catch (directError) {
+        console.error('💥 Direct auth failed:', directError)
+        throw directError
       }
     } catch (err: unknown) {
       console.error('💥 Login error:', err)
@@ -92,6 +243,41 @@ export default function LoginPage() {
     } finally {
       console.log('🏁 Login process completed')
       setLoading(false)
+    }
+  }
+
+  const checkAndCreateDemoUsers = async () => {
+    console.log('🔍 Checking if demo users exist...')
+    try {
+      const supabase = createClient()
+      
+      // Check if demo users exist
+      const { data: existingUsers, error: checkError } = await supabase
+        .from('users')
+        .select('email')
+        .in('email', ['operator@travelpro.com', 'agent@travelpro.com'])
+      
+      console.log('👥 Existing demo users:', existingUsers)
+      
+      if (checkError) {
+        console.warn('⚠️ Could not check existing users:', checkError)
+        return
+      }
+      
+      const existingEmails = existingUsers?.map(u => u.email) || []
+      const missingUsers = ['operator@travelpro.com', 'agent@travelpro.com'].filter(
+        email => !existingEmails.includes(email)
+      )
+      
+      if (missingUsers.length > 0) {
+        console.log('❌ Missing demo users:', missingUsers)
+        console.log('💡 Please run the demo-users.sql script in your Supabase SQL editor')
+        setError(`Demo users not found. Please create them using the demo-users.sql script. Missing: ${missingUsers.join(', ')}`)
+      } else {
+        console.log('✅ All demo users exist!')
+      }
+    } catch (error) {
+      console.error('💥 Error checking demo users:', error)
     }
   }
 
@@ -113,6 +299,9 @@ export default function LoginPage() {
     setEmail(demoCredentials[role].email)
     setPassword(demoCredentials[role].password)
     setError('')
+    
+    // Check if demo users exist first
+    await checkAndCreateDemoUsers()
     
     // Trigger form submit
     setTimeout(() => {
@@ -408,6 +597,37 @@ export default function LoginPage() {
                   }}
                 >
                   Travel Agent
+                </button>
+              </div>
+              
+              {/* Demo Credentials Info */}
+              <div style={{
+                marginTop: '12px',
+                padding: '12px',
+                backgroundColor: '#f0f9ff',
+                border: '1px solid #bae6fd',
+                borderRadius: '8px',
+                fontSize: '12px',
+                color: '#0369a1'
+              }}>
+                <strong>Demo Credentials:</strong><br/>
+                Tour Operator: operator@travelpro.com / demo123<br/>
+                Travel Agent: agent@travelpro.com / demo123<br/>
+                <button
+                  type="button"
+                  onClick={checkAndCreateDemoUsers}
+                  style={{
+                    marginTop: '8px',
+                    padding: '4px 8px',
+                    fontSize: '11px',
+                    backgroundColor: '#0ea5e9',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Check Demo Users
                 </button>
               </div>
             </form>

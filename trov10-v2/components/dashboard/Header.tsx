@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { getRoleDisplayName } from '@/lib/auth'
+import { getRoleDisplayName, getUserInitials, getUserDisplayName } from '@/lib/auth'
 import {
   Bell,
   Search,
@@ -137,6 +137,7 @@ export default function Header({ breadcrumbs = [] }: HeaderProps) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            suppressHydrationWarning={true}
             placeholder="Search packages, bookings, agents..."
             style={{
               width: '100%',
@@ -418,7 +419,7 @@ export default function Header({ breadcrumbs = [] }: HeaderProps) {
               fontSize: '14px',
               boxShadow: '0 2px 4px -1px rgba(59, 130, 246, 0.3)'
             }}>
-              {user?.profile?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+              {getUserInitials(user)}
             </div>
             {!isMobile && (
               <div style={{ textAlign: 'left' }}>
@@ -428,7 +429,7 @@ export default function Header({ breadcrumbs = [] }: HeaderProps) {
                   margin: 0,
                   color: '#111827'
                 }}>
-                  {user?.profile?.name || user?.email?.split('@')[0] || 'User'}
+                  {getUserDisplayName(user)}
                 </p>
                 <p style={{
                   fontSize: '12px',
@@ -479,7 +480,7 @@ export default function Header({ breadcrumbs = [] }: HeaderProps) {
                     margin: '0 0 4px 0',
                     color: '#111827'
                   }}>
-                    {user?.profile?.name || user?.email?.split('@')[0] || 'User'}
+                    {getUserDisplayName(user)}
                   </p>
                   <p style={{
                     fontSize: '12px',

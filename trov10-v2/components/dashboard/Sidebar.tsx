@@ -109,6 +109,7 @@ export default function Sidebar() {
       <button
         onClick={toggleSidebar}
         className="lg:hidden"
+        suppressHydrationWarning={true}
         style={{
           position: 'fixed',
           top: '16px',
@@ -247,6 +248,7 @@ export default function Sidebar() {
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="hidden lg:flex"
+            suppressHydrationWarning={true}
             style={{
               width: '32px',
               height: '32px',
