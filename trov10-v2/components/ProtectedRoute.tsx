@@ -20,9 +20,9 @@ export default function ProtectedRoute({
 
   useEffect(() => {
     if (!loading) {
-      // If no user is logged in, redirect to login
+      // If no user is logged in, redirect to landing page instead of login
       if (!user) {
-        router.push(fallbackPath)
+        router.push('/')
         return
       }
 
@@ -36,7 +36,7 @@ export default function ProtectedRoute({
         } else if (user.profile?.role === 'ADMIN' || user.profile?.role === 'SUPER_ADMIN') {
           router.push('/admin/dashboard')
         } else {
-          router.push(fallbackPath)
+          router.push('/')
         }
         return
       }

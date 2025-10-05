@@ -47,8 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Try Supabase signout (but don't wait for it)
       try { await signOut() } catch (_) {}
       
-      // Force redirect to login
-      router.push('/auth/login')
+      // Force redirect to landing page with replace to prevent back navigation
+      router.replace('/')
       console.log('✅ Sign out completed successfully')
       
     } catch (error) {
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Force clear user state even if signOut fails
       setUser(null)
       clearTokens()
-      router.push('/auth/login')
+      router.replace('/')
     } finally {
       setIsSigningOut(false)
     }
