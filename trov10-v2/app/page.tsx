@@ -1,9 +1,34 @@
 import Link from 'next/link'
-import { ArrowRight, Users, Package, TrendingUp, Shield } from 'lucide-react'
+import { ArrowRight, Users, Package, TrendingUp, Shield, LogIn, UserPlus } from 'lucide-react'
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white">
+      {/* Navigation Header */}
+      <header style={{
+        padding: 'var(--space-4) 0',
+        borderBottom: '2px solid var(--border-light)',
+        backgroundColor: 'var(--bg-white)'
+      }}>
+        <div className="container">
+          <div className="flex-between">
+            <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--color-primary-600)' }}>
+              Trov10
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <Link href="/auth/login" className="btn btn-secondary btn-sm">
+                <LogIn size={16} />
+                Sign In
+              </Link>
+              <Link href="/auth/register" className="btn btn-primary btn-sm">
+                <UserPlus size={16} />
+                Register
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
       {/* Hero Section */}
       <section className="container" style={{ paddingTop: 'var(--space-16)', paddingBottom: 'var(--space-16)' }}>
         <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
@@ -159,9 +184,15 @@ export default function LandingPage() {
             }}>
               Join thousands of travel agents and tour operators already using Trov10
             </p>
-            <Link href="/auth/register" className="btn btn-primary btn-lg">
-              Create Free Account <ArrowRight size={20} />
-            </Link>
+            <div style={{ display: 'flex', gap: 'var(--space-4)', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Link href="/auth/register" className="btn btn-primary btn-lg">
+                Create Free Account <ArrowRight size={20} />
+              </Link>
+              <Link href="/auth/login" className="btn btn-secondary btn-lg">
+                <LogIn size={20} />
+                Sign In
+              </Link>
+            </div>
           </div>
         </div>
       </section>
