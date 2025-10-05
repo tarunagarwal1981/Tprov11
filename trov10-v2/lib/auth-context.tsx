@@ -3,12 +3,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { AuthUser, getCurrentUser, signOut } from '@/lib/auth'
+import { AuthUser, getCurrentUser, signOut, signInWithPassword } from '@/lib/auth'
+import { saveTokens, getTokens, clearTokens, decodeJwt } from '@/lib/token-storage'
 
 interface AuthContextType {
   user: AuthUser | null
   loading: boolean
   signOut: () => Promise<void>
+  signIn: (email: string, password: string) => Promise<boolean>
   refreshUser: () => Promise<void>
 }
 
@@ -17,6 +19,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isSigningOut, setIsSigningOut] = useState(false)
   const router = useRouter()
 
   const refreshUser = async () => {
@@ -31,18 +34,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     try {
-      await signOut()
+      console.log('🚪 Starting sign out process...')
+      setIsSigningOut(true)
+      
+      // Clear user state immediately
       setUser(null)
-      // Clear stored tokens
-      localStorage.removeItem('sb-access-token')
-      localStorage.removeItem('sb-refresh-token')
+      
+      // Clear stored tokens first
+      clearTokens()
+      console.log('🧹 Cleared localStorage tokens')
+      
+      // Try Supabase signout (but don't wait for it)
+      try { await signOut() } catch (_) {}
+      
+      // Force redirect to login
       router.push('/auth/login')
+      console.log('✅ Sign out completed successfully')
+      
     } catch (error) {
-      console.error('Error signing out:', error)
-      // Clear stored tokens even if signOut fails
-      localStorage.removeItem('sb-access-token')
-      localStorage.removeItem('sb-refresh-token')
+      console.error('❌ Error during sign out:', error)
+      // Force clear user state even if signOut fails
+      setUser(null)
+      clearTokens()
+      router.push('/auth/login')
+    } finally {
+      setIsSigningOut(false)
     }
+  }
+
+  const signIn = async (email: string, password: string): Promise<boolean> => {
+    const result = await signInWithPassword(email, password)
+    if (!result.ok) return false
+    await refreshUser()
+    return true
   }
 
   useEffect(() => {
@@ -51,9 +75,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        // Skip session restoration if user is signing out or on login page
+        if (isSigningOut || window.location.pathname === '/auth/login') {
+          console.log('🚪 Skipping session restoration - user is signing out or on login page')
+          setLoading(false)
+          return
+        }
+        
         // Check for localStorage tokens first (fallback from direct auth)
-        const storedAccessToken = localStorage.getItem('sb-access-token')
-        const storedRefreshToken = localStorage.getItem('sb-refresh-token')
+        const tokens = getTokens()
+        const storedAccessToken = tokens?.accessToken
+        const storedRefreshToken = tokens?.refreshToken
         
         if (storedAccessToken && storedRefreshToken) {
           console.log('🔄 Found stored tokens, attempting to restore session...')
@@ -74,8 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (error) {
               console.warn('⚠️ Could not restore session from stored tokens:', error)
               // Clear invalid tokens
-              localStorage.removeItem('sb-access-token')
-              localStorage.removeItem('sb-refresh-token')
+              clearTokens()
             } else {
               console.log('✅ Session restored from stored tokens')
             }
@@ -86,7 +117,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             
             try {
               // Use direct API to fetch user profile
-              const profileResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?select=*&id=eq.${JSON.parse(atob(storedAccessToken.split('.')[1])).sub}`, {
+              const payload = decodeJwt(storedAccessToken)
+              const userId = payload?.sub
+              const profileResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?select=*&id=eq.${userId}`, {
                 headers: {
                   'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
                   'Authorization': `Bearer ${storedAccessToken}`,
@@ -114,8 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
             
             // If all else fails, clear tokens
-            localStorage.removeItem('sb-access-token')
-            localStorage.removeItem('sb-refresh-token')
+            clearTokens()
           }
         }
         
@@ -140,8 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
           // Clear stored tokens on sign out
-          localStorage.removeItem('sb-access-token')
-          localStorage.removeItem('sb-refresh-token')
+          clearTokens()
         }
         setLoading(false)
       }
@@ -150,12 +181,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [isSigningOut])
+
+  // Auto-redirect from login when user becomes authenticated
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (loading) return
+    if (!user) return
+    if (!window.location.pathname.startsWith('/auth')) return
+
+    const role = user.profile?.role
+    if (role === 'TOUR_OPERATOR') {
+      router.push('/operator/dashboard')
+    } else if (role === 'TRAVEL_AGENT') {
+      router.push('/agent/dashboard')
+    } else if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+      router.push('/admin/dashboard')
+    } else {
+      router.push('/')
+    }
+  }, [user, loading, router])
 
   const value = {
     user,
     loading,
     signOut: handleSignOut,
+    signIn,
     refreshUser
   }
 

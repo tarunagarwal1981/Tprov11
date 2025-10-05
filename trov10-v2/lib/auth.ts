@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { saveTokens, getTokens, clearTokens, decodeJwt } from '@/lib/token-storage'
 
 export interface UserProfile {
   id: string
@@ -17,6 +18,57 @@ export interface AuthUser {
   profile: UserProfile | null
 }
 
+export interface SignInResult {
+  ok: boolean
+  error?: string
+}
+
+export async function signInWithPassword(email: string, password: string): Promise<SignInResult> {
+  try {
+    const normalizedEmail = email.trim().toLowerCase()
+    // Use direct API to avoid client hangs
+    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email: normalizedEmail, password })
+    })
+
+    if (!res.ok) {
+      let bodyText = ''
+      try { bodyText = await res.text() } catch (_) {}
+      console.warn('Auth failed:', { status: res.status, statusText: res.statusText, bodyText })
+      return { ok: false, error: `Auth failed (${res.status})` }
+    }
+
+    const data = await res.json()
+    const accessToken: string = data.access_token
+    const refreshToken: string = data.refresh_token
+
+    // Store tokens for fallback flows
+    saveTokens({ accessToken, refreshToken })
+
+    // Best-effort: set session in supabase client (with timeout)
+    try {
+      const supabase = createClient()
+      await Promise.race([
+        supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('setSession timeout')), 2500))
+      ])
+    } catch (_) {
+      // ignore; we have tokens stored
+    }
+
+    return { ok: true }
+  } catch (e: any) {
+    console.error('signInWithPassword error:', e)
+    return { ok: false, error: e?.message || 'Unknown error' }
+  }
+}
+
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
     const supabase = createClient()
@@ -25,19 +77,22 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
     
     if (sessionError || !session?.user) {
-      // Check for localStorage tokens as fallback
-      const storedAccessToken = localStorage.getItem('sb-access-token')
+      const tokens = getTokens()
+      const storedAccessToken = tokens?.accessToken
       if (storedAccessToken) {
         console.log('🔄 No Supabase session, trying localStorage fallback...')
         try {
-          // Decode JWT to get user ID
-          const payload = JSON.parse(atob(storedAccessToken.split('.')[1]))
-          const userId = payload.sub
+          const payload = decodeJwt(storedAccessToken)
+          const userId = payload?.sub
+          if (!userId) {
+            clearTokens()
+            return null
+          }
           
           // Fetch user profile directly
           const profileResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?select=*&id=eq.${userId}`, {
             headers: {
-              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
               'Authorization': `Bearer ${storedAccessToken}`,
               'Content-Type': 'application/json'
             }
@@ -56,9 +111,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
           }
         } catch (fallbackError) {
           console.warn('⚠️ localStorage fallback failed:', fallbackError)
-          // Clear invalid tokens
-          localStorage.removeItem('sb-access-token')
-          localStorage.removeItem('sb-refresh-token')
+          clearTokens()
         }
       }
       return null
@@ -93,8 +146,13 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 export async function signOut() {
-  const supabase = createClient()
-  await supabase.auth.signOut()
+  try {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+  } catch (_) {
+    // ignore
+  }
+  clearTokens()
 }
 
 export function getUserDisplayName(user: AuthUser | null): string {
